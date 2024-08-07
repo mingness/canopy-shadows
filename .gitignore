@@ -1,6 +1,8 @@
 .gradle/
 .idea/
 build/
+gui-parameters/
+screenshots/
 
 # Compiled class file
 *.class
