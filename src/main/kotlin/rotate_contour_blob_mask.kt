@@ -20,8 +20,8 @@ fun main() = application {
         height = 600
     }
     program {
-        val canopy1 = loadImage("data/images/duckheads.jpg")
-        val canopy2 = loadImage("data/images/fern.jpg")
+        val canopy1 = loadImage("data/images/fern.jpg")
+        val canopy2 = loadImage("data/images/duckheads.jpg")
 
         val bokehThreshold = 5000
         val whiteThreshold = 3000
@@ -32,11 +32,15 @@ fun main() = application {
         val imageWidth = canopy1.width
         val imageHeight = canopy1.height
 
-        val rotated = renderTarget(canopy1.height, canopy1.width) {
+        val rotated = renderTarget(imageWidth, imageHeight) {
             colorBuffer()
             depthBuffer()
         }
-        val blurred = renderTarget(canopy1.height, canopy1.width) {
+        val blurred = renderTarget(imageWidth, imageHeight) {
+            colorBuffer()
+            depthBuffer()
+        }
+        val blurredCanopy2 = renderTarget(imageWidth, imageHeight) {
             colorBuffer()
             depthBuffer()
         }
@@ -121,7 +125,8 @@ fun main() = application {
 
             // blur to canopy
             blurCanopy.apply(animation, blurred.colorBuffer(0))
-            blurredBuffer.shadow.download()
+            blurBlob.apply(canopy2, blurredCanopy2.colorBuffer(0))
+
 
             drawer.isolatedWithTarget(shadows) {
                 // mask directly
@@ -130,7 +135,7 @@ fun main() = application {
                 drawStyle.blendMode = BlendMode.OVER
                 image(blurredBuffer, 0.0, 0.0, blurredBuffer.width.toDouble(), blurredBuffer.height.toDouble())
                 drawStyle.blendMode = BlendMode.MULTIPLY
-                image(canopy2, 0.0, 0.0, shadows.width.toDouble(), shadows.height.toDouble())
+                image(blurredCanopy2.colorBuffer(0), 0.0, 0.0, shadows.width.toDouble(), shadows.height.toDouble())
 
 //                 mask centroids
                 for (centroid in centroids) {
@@ -141,7 +146,7 @@ fun main() = application {
                         image(blurredBuffer, -centroid.x+bokehRadius, -centroid.y+bokehRadius)
                         drawStyle.blendMode = BlendMode.MULTIPLY
                         image(bokeh)
-                        image(canopy2, -centroid.x+bokehRadius, -centroid.y+bokehRadius)
+                        image(blurredCanopy2.colorBuffer(0), -centroid.x+bokehRadius, -centroid.y+bokehRadius)
                     }
                     drawStyle.blendMode = BlendMode.ADD
                     val x = centroid.x-bokehRadius + (width - centroid.x) * (1.0 - mag)/mag
