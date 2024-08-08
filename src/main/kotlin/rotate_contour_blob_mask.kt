@@ -78,7 +78,7 @@ fun main() = application {
                 ortho(rotated)
                 clear(ColorRGBa.WHITE)
                 translate(width / 2.0, height / 2.0)
-//                rotate(seconds * 360 / 30)
+                rotate(seconds * 360 / 30)
                 image(canopy1, -width / 2.0, -height / 2.0)
             }
             val animation = rotated.colorBuffer(0)
