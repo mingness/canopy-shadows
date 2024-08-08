@@ -3,13 +3,9 @@ import org.openrndr.color.ColorRGBa
 import org.openrndr.draw.*
 import org.openrndr.extensions.Screenshots
 import org.openrndr.extra.fx.blur.BoxBlur
-import org.openrndr.extra.imageFit.FitMethod
 import org.openrndr.extra.marchingsquares.findContours
-import org.openrndr.extra.olive.oliveProgram
-import org.openrndr.ffmpeg.VideoPlayerFFMPEG
 import org.openrndr.math.Vector2
-import org.openrndr.shape.IntRectangle
-import org.openrndr.shape.Rectangle
+import org.openrndr.math.times
 import kotlin.math.*
 
 fun main() = application {
@@ -20,24 +16,23 @@ fun main() = application {
         height = 1000
     }
     program {
-        val fern = loadImage("data/images/canopy2.jpg")
-        val duckheads = loadImage("data/images/canopy1.jpg")
+        val bokehThreshold = 5000
+        val whiteThreshold = 3000
+        val canopy1 = loadImage("data/images/fern.jpg")
+        val canopy2 = loadImage("data/images/duckheads.jpg")
 
-        val imageWidth = fern.width
-        val imageHeight = fern.height
-
-        val imageRect = Rectangle(0.0,0.0,imageWidth.toDouble(),imageHeight.toDouble())
-        val shrunkRect = Rectangle(0.0,0.0,imageWidth.toDouble()/10,imageHeight.toDouble()/10)
+        val imageWidth = canopy1.width
+        val imageHeight = canopy1.height
 
         var x = 0.0
         var y = 0.0
         val mag = 5.0/3.0
 
-        val rotated = renderTarget(fern.height, fern.width) {
+        val rotated = renderTarget(canopy1.height, canopy1.width) {
             colorBuffer()
             depthBuffer()
         }
-        val blurred = renderTarget(fern.height, fern.width) {
+        val blurred = renderTarget(canopy1.height, canopy1.width) {
             colorBuffer()
             depthBuffer()
         }
@@ -50,7 +45,7 @@ fun main() = application {
         blur5.window = 5
         blur5.spread = 1.0
 
-        val shrunk = renderTarget(fern.height/10, fern.width/10) {
+        val shrunk = renderTarget(canopy1.height/10, canopy1.width/10) {
             colorBuffer()
             depthBuffer()
         }
@@ -85,8 +80,8 @@ fun main() = application {
                 ortho(rotated)
                 clear(ColorRGBa.WHITE)
                 translate(width/2.0, height/2.0)
-                rotate(seconds * 30.0)
-                image(fern,-width/2.0, -height/2.0)
+//                rotate(seconds * 360/30)
+                image(canopy1,-width/2.0, -height/2.0)
             }
             val animation = rotated.colorBuffer(0)
             animation.shadow.download()
@@ -105,10 +100,36 @@ fun main() = application {
             }
 
             val contours = findContours(::f, drawer.bounds.offsetEdges(32.0), 4.0)
+//            println(contours)
+            val centroids = mutableListOf<Vector2>()
+            val areas = mutableListOf<Double>()
+            for (contour in contours) {
+                if (contour.closed && (contour.bounds.area < bokehThreshold)) {
+                    var centroid = Vector2(0.0,0.0)
+                    val length = contour.length
+
+                    for (segment in contour.segments) {
+                        centroid += segment.length * segment.position(0.5)
+                    }
+                    centroid /= length
+
+//                    println(blrrd.shadow[centroid.x.toInt(), centroid.y.toInt()].luminance)
+                    if (blrrd.shadow[centroid.x.toInt(), centroid.y.toInt()].luminance > 0) {
+                        centroids += centroid
+                        areas += contour.bounds.area
+                    }
+                }
+            }
+//            println(areas)
+            println("number of centroids: ${centroids.size}")
             drawer.drawStyle.colorMatrix = grayscale()
             drawer.image(blrrd)
             drawer.contours(contours)
-
+            centroids.zip(areas).forEach {pair ->
+                val gray = min(pair.second/whiteThreshold,1.0)
+                drawer.fill = ColorRGBa(gray,gray,gray)
+                drawer.circle(pair.first,10.0)
+            }
         }
     }
 }

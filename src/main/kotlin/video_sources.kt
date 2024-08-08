@@ -23,8 +23,8 @@ fun main() = application {
     }
     program {
         println(VideoPlayerFFMPEG.listDeviceNames())
-        val videoPlayer1 = VideoPlayerFFMPEG.fromDevice("/dev/video0")
-        val videoPlayer2 = VideoPlayerFFMPEG.fromDevice("/dev/video2")
+        val videoPlayer1 = VideoPlayerFFMPEG.fromDevice("/dev/video2")
+        val videoPlayer2 = VideoPlayerFFMPEG.fromDevice("/dev/video4")
         videoPlayer1.play()
         videoPlayer2.play()
         extend {

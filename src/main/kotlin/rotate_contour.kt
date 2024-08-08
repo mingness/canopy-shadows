@@ -3,12 +3,8 @@ import org.openrndr.color.ColorRGBa
 import org.openrndr.draw.*
 import org.openrndr.extensions.Screenshots
 import org.openrndr.extra.fx.blur.BoxBlur
-import org.openrndr.extra.imageFit.FitMethod
 import org.openrndr.extra.marchingsquares.findContours
-import org.openrndr.extra.olive.oliveProgram
-import org.openrndr.ffmpeg.VideoPlayerFFMPEG
 import org.openrndr.math.Vector2
-import org.openrndr.shape.IntRectangle
 import org.openrndr.shape.Rectangle
 import kotlin.math.*
 
@@ -20,11 +16,11 @@ fun main() = application {
         height = 1000
     }
     program {
-        val fern = loadImage("data/images/canopy2.jpg")
-        val duckheads = loadImage("data/images/canopy1.jpg")
+        val canopy1 = loadImage("data/images/fern.jpg")
+        val canopy2 = loadImage("data/images/duckheads.jpg")
 
-        val imageWidth = fern.width
-        val imageHeight = fern.height
+        val imageWidth = canopy1.width
+        val imageHeight = canopy1.height
 
         val imageRect = Rectangle(0.0,0.0,imageWidth.toDouble(),imageHeight.toDouble())
         val shrunkRect = Rectangle(0.0,0.0,imageWidth.toDouble()/10,imageHeight.toDouble()/10)
@@ -33,11 +29,11 @@ fun main() = application {
         var y = 0.0
         val mag = 5.0/3.0
 
-        val rotated = renderTarget(fern.height, fern.width) {
+        val rotated = renderTarget(canopy1.height, canopy1.width) {
             colorBuffer()
             depthBuffer()
         }
-        val blurred = renderTarget(fern.height, fern.width) {
+        val blurred = renderTarget(canopy1.height, canopy1.width) {
             colorBuffer()
             depthBuffer()
         }
@@ -50,7 +46,7 @@ fun main() = application {
         blur5.window = 5
         blur5.spread = 1.0
 
-        val shrunk = renderTarget(fern.height/10, fern.width/10) {
+        val shrunk = renderTarget(canopy1.height/10, canopy1.width/10) {
             colorBuffer()
             depthBuffer()
         }
@@ -86,7 +82,7 @@ fun main() = application {
                 clear(ColorRGBa.WHITE)
                 translate(width/2.0, height/2.0)
                 rotate(seconds * 30.0)
-                image(fern,-width/2.0, -height/2.0)
+                image(canopy1,-width/2.0, -height/2.0)
             }
             val animation = rotated.colorBuffer(0)
             animation.shadow.download()
