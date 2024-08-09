@@ -1,11 +1,17 @@
 import org.openrndr.application
 import org.openrndr.color.ColorRGBa
 import org.openrndr.draw.*
+import org.openrndr.drawImage
 import org.openrndr.extensions.Screenshots
 import org.openrndr.extra.fx.blur.BoxBlur
 import org.openrndr.extra.imageFit.FitMethod
 import org.openrndr.extra.imageFit.imageFit
+import org.openrndr.extra.marchingsquares.findContours
+import org.openrndr.extra.noise.uniform
 import org.openrndr.ffmpeg.VideoPlayerFFMPEG
+import org.openrndr.math.Vector2
+import org.openrndr.math.Vector4
+import org.openrndr.math.times
 import org.openrndr.shape.IntRectangle
 import org.openrndr.shape.Rectangle
 import kotlin.math.*
@@ -18,6 +24,13 @@ fun main() = application {
         height = 1000
     }
     program {
+        val bokehThreshold = 5000
+        val bokehRadius = 40.0
+        val bokehWidth = bokehRadius*2
+        val mag = 5.0 / 3.0
+        val numNodes = 5
+        val grayLevel = 0.1
+
         val videoPlayer1 = VideoPlayerFFMPEG.fromDevice("/dev/video2")
         val videoPlayer2 = VideoPlayerFFMPEG.fromDevice("/dev/video4")
         videoPlayer1.play()
@@ -26,93 +39,173 @@ fun main() = application {
         val canopyWidth = 640
         val canopyHeight = 480
 
-        val imageWidth = canopyWidth - 100
-        val imageHeight = canopyHeight - 100
-        val upperCanopy = renderTarget(canopyWidth,canopyHeight) {
+        val imageWidth = canopyWidth
+        val imageHeight = canopyHeight
+
+        val upperCanopy = renderTarget(imageWidth, imageHeight) {
             colorBuffer()
             depthBuffer()
         }
-        val lowerCanopy = renderTarget(canopyWidth,canopyHeight) {
+        val lowerCanopy = renderTarget(imageWidth, imageHeight) {
             colorBuffer()
             depthBuffer()
         }
 
-
-        val sqWidth = 30
-        val mag = 5.0/3.0
-        val processWidth = sqWidth*7
-        val processMargin = (processWidth - sqWidth)/2
-        val canopy1SqBlur = renderTarget(processWidth, processWidth) {
+        val withNetwork = renderTarget(imageWidth, imageHeight) {
             colorBuffer()
             depthBuffer()
         }
-        val blurred = renderTarget(processWidth, processWidth) {
+        val blurred = renderTarget(imageWidth, imageHeight) {
             colorBuffer()
             depthBuffer()
         }
-        // -- create blur filter
-        val blur = BoxBlur()
-        blur.window = 15
-        blur.spread = 1.0
-        blur.gain = 0.5
-
+        val blurredCanopy2 = renderTarget(imageWidth, imageHeight) {
+            colorBuffer()
+            depthBuffer()
+        }
+        val blurredFinal = renderTarget(imageWidth, imageHeight) {
+            colorBuffer()
+            depthBuffer()
+        }
+        val bokeh = drawImage(bokehWidth.toInt(), bokehWidth.toInt()) {
+            drawer.clear(ColorRGBa.BLACK)
+            drawer.fill = ColorRGBa.WHITE
+            drawer.circle(bokehRadius,bokehRadius,bokehRadius)
+        }
+        val masked = renderTarget(bokehWidth.toInt(), bokehWidth.toInt()) {
+            colorBuffer()
+            depthBuffer()
+        }
         val shadows = renderTarget(imageWidth, imageHeight) {
             colorBuffer()
             depthBuffer()
         }
 
-        fun dapple(canopy1: ColorBuffer, canopy2: ColorBuffer) {
-            val cols = canopyWidth/sqWidth
-            val rows = canopyHeight/sqWidth
+        val sourceRect = Rectangle(0.0, 0.0, bokehWidth, bokehWidth)
 
-            drawer.isolatedWithTarget(shadows) {
-                drawer.clear(ColorRGBa.BLACK)
-            }
-
-            for (i in 0 until cols) {
-                for (j in 0 until rows) {
-                    val source1Rect = IntRectangle(i*sqWidth,j*sqWidth,sqWidth,sqWidth)
-                    val target1Rect = IntRectangle(processMargin,processMargin,sqWidth,sqWidth)
-                    val source2Rect = Rectangle((i*sqWidth-processMargin).toDouble(),(j*sqWidth-processMargin).toDouble(),processWidth.toDouble(),processWidth.toDouble())
-                    val target2Rect = Rectangle(0.0,0.0,processWidth.toDouble(),processWidth.toDouble())
-
-                    drawer.isolatedWithTarget(canopy1SqBlur) {
-                        drawer.clear(ColorRGBa.BLACK)
-                    }
-                    canopy1.copyTo(canopy1SqBlur.colorBuffer(0),0,0,source1Rect,target1Rect)
-
-                    blur.apply(canopy1SqBlur.colorBuffer(0), blurred.colorBuffer(0))
-
-                    drawer.isolatedWithTarget(blurred) {
-                        ortho()
-                        drawStyle.blendMode = BlendMode.MULTIPLY
-                        image(canopy2,source2Rect,target2Rect)
-                    }
-
-                    drawer.isolatedWithTarget(shadows) {
-                        ortho()
-                        drawStyle.blendMode = BlendMode.ADD
-                        image(blurred.colorBuffer(0),(i*sqWidth-processMargin*mag+20),(j*sqWidth-processMargin*mag+10),processWidth*mag,processWidth*mag)
-                    }
-                }
+        val nodeParameters = List(numNodes) {
+            Vector4.uniform(0.0,1.0)
+        }
+        val nodeIndexList = mutableListOf<Int>()
+        for (i in 0 until  numNodes) {
+            for (j in 0 until i) {
+                nodeIndexList += i
+                nodeIndexList += j
             }
         }
 
+        // -- create blur filter
+        val blurCanopy = BoxBlur()
+        blurCanopy.window = 15
+        blurCanopy.spread = 1.0
+        blurCanopy.gain = 0.5
+
+        val blurBlob = BoxBlur()
+        blurBlob.window = 5
+        blurBlob.spread = 1.0
+
+        val blurFinal = BoxBlur()
+        blurFinal.window = 2
+        blurFinal.spread = 1.0
 
         extend(Screenshots())
         extend {
-            drawer.stroke = null
-
             drawer.isolatedWithTarget(upperCanopy) {
+                ortho(upperCanopy)
                 videoPlayer1.draw(drawer)
             }
             drawer.isolatedWithTarget(lowerCanopy) {
+                ortho(lowerCanopy)
                 videoPlayer2.draw(drawer)
             }
 
-            dapple(upperCanopy.colorBuffer(0),lowerCanopy.colorBuffer(0))
-            println("$shadows.height" + ", " + "$shadows.width")
-            drawer.imageFit(shadows.colorBuffer(0),0.0,0.0,width.toDouble(),height.toDouble(), fitMethod = FitMethod.Cover)
+            drawer.isolatedWithTarget(withNetwork) {
+                ortho(withNetwork)
+                clear(ColorRGBa.WHITE)
+                image(upperCanopy.colorBuffer(0))
+                val nodePoints = mutableListOf<Vector2>()
+                for (params in nodeParameters) {
+                    nodePoints += Vector2(imageWidth*(params[0] +0.2*cos(seconds*params[2]/20.0 + params[3])),
+                        imageHeight*(params[1] + 0.2*sin(seconds*params[3]/20.0 + params[2])))
+                }
+                val nodeList = nodeIndexList.map { nodePoints[it]}
+                stroke = ColorRGBa.BLACK
+                strokeWeight = 4.0
+                lineSegments(nodeList)
+            }
+            val animation = withNetwork.colorBuffer(0)
+            animation.shadow.download()
+
+            // blur to get smooth contours of medium holes
+            blurBlob.apply(animation, blurred.colorBuffer(0))
+            var blurredBuffer = blurred.colorBuffer(0)
+            blurredBuffer.shadow.download()
+
+            // function to find contours, from tutorial
+            fun f(v: Vector2): Double {
+                val iv = v.toInt()
+//                val d = if (iv.x >= 0 && iv.y >= 0 && iv.x < fern.width && iv.y < fern.height) fern.shadow[iv.x, iv.y].luminance else 0.0
+                val d =
+                    if (iv.x >= 0 && iv.y >= 0 && iv.x < blurred.width && iv.y < blurred.height) blurredBuffer.shadow[iv.x, iv.y].luminance else 0.0
+                return cos(d * PI)
+            }
+
+            // find contours, and centroid of blobs, and check if blob is bright
+            val contours = findContours(::f, drawer.bounds.offsetEdges(32.0), 4.0)
+            val centroids = mutableListOf<Vector2>()
+            for (contour in contours) {
+                if (contour.closed && (contour.bounds.area < bokehThreshold)) {
+                    var centroid = Vector2(0.0, 0.0)
+                    val length = contour.length
+
+                    for (segment in contour.segments) {
+                        centroid += segment.length * segment.position(0.5)
+                    }
+                    centroid /= length
+
+                    if (blurredBuffer.shadow[centroid.x.toInt(), centroid.y.toInt()].luminance > 0.1) {
+                        centroids += centroid
+                    }
+                }
+            }
+
+            // blur to canopy
+            blurCanopy.apply(animation, blurred.colorBuffer(0))
+            blurBlob.apply(lowerCanopy.colorBuffer(0), blurredCanopy2.colorBuffer(0))
+            val canopy2Image = blurredCanopy2.colorBuffer(0)
+
+            drawer.isolatedWithTarget(shadows) {
+                // mask directly
+                ortho()
+                clear(ColorRGBa.BLACK)
+                drawStyle.blendMode = BlendMode.OVER
+                image(blurredBuffer, 0.0, 0.0, blurredBuffer.width.toDouble(), blurredBuffer.height.toDouble())
+                drawStyle.blendMode = BlendMode.MULTIPLY
+                image(canopy2Image, 0.0, 0.0, shadows.width.toDouble(), shadows.height.toDouble())
+
+//                 mask centroids
+                for (centroid in centroids) {
+                    drawer.isolatedWithTarget(masked) {
+                        ortho()
+                        clear(ColorRGBa.BLACK)
+                        drawStyle.blendMode = BlendMode.OVER
+                        image(blurredBuffer, -centroid.x+bokehRadius, -centroid.y+bokehRadius)
+                        drawStyle.blendMode = BlendMode.MULTIPLY
+                        image(bokeh)
+                        image(canopy2Image, -centroid.x+bokehRadius, -centroid.y+bokehRadius)
+                    }
+                    drawStyle.blendMode = BlendMode.ADD
+                    val x = centroid.x-bokehRadius + (width - centroid.x) * (1.0 - mag)/mag
+                    val y = centroid.y-bokehRadius + (height - centroid.y) * (1.0 - mag)/mag
+                    val targetRect = Rectangle(x, y, bokehWidth, bokehWidth)
+                    image(masked.colorBuffer(0), sourceRect, targetRect)
+                }
+            }
+
+            blurFinal.apply(shadows.colorBuffer(0), blurredFinal.colorBuffer(0))
+            drawer.clear(ColorRGBa(grayLevel, grayLevel, grayLevel))
+            drawer.drawStyle.blendMode = BlendMode.ADD
+            drawer.image(blurredFinal.colorBuffer(0),0.0,0.0,width.toDouble(), height.toDouble())
         }
     }
 }

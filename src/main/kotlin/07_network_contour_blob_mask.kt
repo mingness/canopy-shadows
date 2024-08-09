@@ -20,6 +20,7 @@ fun main() = application {
         height = 600
     }
     program {
+
         val canopy1 = loadImage("data/images/fern.jpg")
         val canopy2 = loadImage("data/images/duckheads.jpg")
 
@@ -27,6 +28,7 @@ fun main() = application {
         val bokehRadius = 40.0
         val bokehWidth = bokehRadius*2
         val mag = 5.0 / 3.0
+        val numNodes = 5
 
         val imageWidth = canopy1.width
         val imageHeight = canopy1.height
@@ -63,7 +65,6 @@ fun main() = application {
 
         val sourceRect = Rectangle(0.0, 0.0, bokehWidth, bokehWidth)
 
-        val numNodes = 5
         val nodeParameters = List(numNodes) {
             Vector4.uniform(0.0,1.0)
         }
