@@ -1,3 +1,4 @@
+import org.openrndr.Fullscreen
 import org.openrndr.application
 import org.openrndr.color.ColorRGBa
 import org.openrndr.draw.*
@@ -16,20 +17,20 @@ import kotlin.math.*
 
 fun main() = application {
     configure {
-//        fullscreen = Fullscreen.CURRENT_DISPLAY_MODE
-//        hideCursor = true
-        width = 1400
-        height = 1000
+        fullscreen = Fullscreen.CURRENT_DISPLAY_MODE
+        hideCursor = true
+//        width = 1400
+//        height = 1000
     }
     program {
-        val bokehThreshold = 10000
-        val bokehRadius = 100.0
+        val bokehThreshold = 5000
+        val bokehRadius = 50.0
         val bokehWidth = bokehRadius*2
         val mag = 5.0 / 3.0
         val grayLevel = 0.1
 
         val videoPlayer1 = VideoPlayerFFMPEG.fromDevice("/dev/video2")
-        val videoPlayer2 = VideoPlayerFFMPEG.fromDevice("/dev/video4")
+        val videoPlayer2 = VideoPlayerFFMPEG.fromDevice("/dev/video0"   )
         videoPlayer1.play()
         videoPlayer2.play()
 
